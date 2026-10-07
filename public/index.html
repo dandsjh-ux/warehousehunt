@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14161f">
+<title>Escape Warehouse</title>
+<meta name="description" content="A multiplayer word-hunting hide and seek game. Collect articles, nouns, verbs and adjectives to build your sentence and escape!">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+<style>
+:root {
+  --ink: #14161f;        /* warehouse night */
+  --ink-2: #1e2130;
+  --board: #2a2418;      /* dark crate board */
+  --wood: #8a6238;
+  --amber: #ffc94a;      /* lantern */
+  --chalk: #f3eee2;
+  --muted: #a9a49a;
+  --art: #ffcc33; --noun: #4da6ff; --verb: #ff5a5a; --adj: #5ad85a;
+  --danger: #ff5a5a; --good: #37d66a;
+  --display: "Bungee", "Arial Black", system-ui, sans-serif;
+  --body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--chalk); font-family: var(--body); font-weight: 600; -webkit-tap-highlight-color: transparent; }
+body.playing { touch-action: none; user-select: none; -webkit-user-select: none; }
+#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+.hidden { display: none !important; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+
+/* ---------- buttons & inputs ---------- */
+.btn { border: 0; border-radius: 10px; padding: 12px 18px; font-weight: 900; font-size: 17px; color: var(--ink); background: var(--chalk); box-shadow: 0 4px 0 #8b8577; transition: transform .08s; }
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #8b8577; }
+.btn.primary { background: var(--amber); box-shadow: 0 4px 0 #a9781a; }
+.btn.ghost { background: transparent; color: var(--chalk); box-shadow: inset 0 0 0 2px #4a4a58; }
+.btn.small { padding: 7px 12px; font-size: 14px; box-shadow: none; }
+.btn.small.ghost { box-shadow: inset 0 0 0 2px #4a4a58; }
+.btn.danger { background: var(--danger); color: #fff; box-shadow: 0 4px 0 #9c2a2a; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+input[type=text], select { font: inherit; font-weight: 800; color: var(--chalk); background: #0f1118; border: 2px solid #3a3c4c; border-radius: 10px; padding: 11px 12px; width: 100%; }
+select { padding: 8px 10px; font-size: 14px; }
+select:disabled { opacity: .7; }
+label { display: block; font-weight: 800; font-size: 14px; color: var(--muted); }
+
+/* crate-board panel: wood edge + stencil feel, the one recurring "material" */
+.panel { background: linear-gradient(180deg, rgba(36,31,22,.96), rgba(24,22,18,.96)); border: 3px solid #5a4126; border-radius: 14px; box-shadow: 0 0 0 3px #1a140c, 0 18px 50px rgba(0,0,0,.55); }
+
+/* ---------- screens ---------- */
+.screen { position: fixed; inset: 0; overflow-y: auto; padding: max(16px, env(safe-area-inset-top)) 16px 24px; background: radial-gradient(ellipse at 30% 20%, rgba(255,201,74,.10), transparent 55%), linear-gradient(180deg, rgba(20,22,31,.55), rgba(20,22,31,.88)); }
+
+/* menu */
+.menu-wrap { max-width: 1060px; margin: 0 auto; display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
+.title { grid-column: 1 / -1; padding: 6px 4px 0; }
+.title h1 { font-family: var(--display); font-weight: 400; margin: 0; line-height: .9; font-size: clamp(42px, 8.5vw, 96px); color: var(--chalk); letter-spacing: .01em; text-shadow: 0 5px 0 #6b4a24, 0 10px 24px rgba(0,0,0,.6); transform: rotate(-1.5deg); transform-origin: left; }
+.title h1 .crate { display: inline-block; color: var(--ink); background: var(--amber); padding: .06em .18em .02em; border-radius: 6px; text-shadow: none; box-shadow: 0 6px 0 #a9781a; margin-top: .08em; }
+.title p { margin: 18px 0 0; font-size: 18px; color: var(--muted); max-width: 46ch; }
+.title p b { color: var(--chalk); }
+.customiser { padding: 16px; display: grid; grid-template-columns: 200px 1fr; gap: 14px; }
+.stage { position: relative; align-self: start; }
+#preview { width: 200px; height: 290px; display: block; border-radius: 10px; background: radial-gradient(ellipse at 50% 85%, rgba(255,201,74,.35), transparent 60%), #0f1118; }
+.stage .btn { position: absolute; left: 8px; bottom: 8px; right: 8px; }
+.look-row { margin-bottom: 9px; }
+.look-row > span { display: block; font-size: 13px; font-weight: 800; color: var(--muted); margin-bottom: 4px; }
+.chips-sel { display: flex; flex-wrap: wrap; gap: 5px; }
+.chips-sel button { background: #0f1118; color: var(--chalk); border: 2px solid #3a3c4c; border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 800; }
+.chips-sel button[aria-pressed=true] { border-color: var(--amber); background: #3a2f12; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.swatches button { width: 26px; height: 26px; border-radius: 50%; border: 3px solid #0f1118; box-shadow: 0 0 0 2px #3a3c4c; padding: 0; }
+.swatches button[aria-pressed=true] { box-shadow: 0 0 0 3px var(--amber); }
+.menu-actions { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.join-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+#codeInput { text-transform: uppercase; letter-spacing: .35em; text-align: center; font-family: var(--display); font-size: 22px; }
+.or { text-align: center; color: var(--muted); font-size: 14px; }
+.error { color: var(--danger); min-height: 1.2em; margin: 0; font-weight: 800; }
+details.howto { background: #0f1118; border-radius: 10px; padding: 10px 14px; }
+details.howto summary { font-weight: 900; cursor: pointer; }
+details.howto ul { margin: 10px 0 4px; padding-left: 18px; line-height: 1.5; font-size: 15px; }
+.rooms-key { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; font-size: 14px; }
+.rooms-key span { border-left: 6px solid var(--c); padding: 3px 8px; background: rgba(255,255,255,.04); border-radius: 4px; }
+
+/* lobby */
+.lobby-wrap { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 340px 1fr; gap: 18px; }
+.lobby-left, .lobby-right { padding: 18px; }
+.code-box { background: var(--amber); color: var(--ink); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; }
+.code-box span { font-weight: 900; font-size: 14px; }
+.code-box strong { font-family: var(--display); font-weight: 400; font-size: 44px; letter-spacing: .12em; grid-column: 1; line-height: 1; }
+.code-box .btn { grid-column: 2; grid-row: 1 / 3; color: var(--ink); box-shadow: inset 0 0 0 2px rgba(20,22,31,.35); }
+h3 { font-family: var(--display); font-weight: 400; font-size: 20px; margin: 18px 0 10px; letter-spacing: .02em; }
+h3 small { font-family: var(--body); font-size: 13px; color: var(--muted); letter-spacing: 0; }
+#playerList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+#playerList li { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px; background: #0f1118; border-radius: 10px; padding: 6px 10px; }
+.avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; background: var(--c); border: 3px solid var(--s); }
+.pname { font-weight: 900; }
+.pname em { font-style: normal; color: var(--muted); font-weight: 700; font-size: 13px; }
+.kick { background: none; border: 0; color: var(--muted); font-size: 13px; text-decoration: underline; }
+.note { color: var(--muted); font-size: 14px; line-height: 1.45; background: rgba(255,201,74,.08); border-left: 4px solid var(--amber); padding: 8px 10px; border-radius: 4px; }
+.lobby-buttons { display: grid; gap: 8px; margin-top: 12px; }
+.lobby-right .customiser { padding: 0; margin-bottom: 4px; }
+.presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px 14px; }
+.settings-grid label span { display: block; margin-bottom: 3px; }
+.levels { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; font-size: 13px; }
+.levels span { background: #0f1118; border-radius: 8px; padding: 5px 9px; }
+.levels b { color: var(--amber); }
+
+/* ---------- in-game HUD ---------- */
+#hud { position: fixed; inset: 0; pointer-events: none; }
+#hud button, #hud .clickable { pointer-events: auto; }
+#minimap { position: absolute; top: 12px; left: 12px; width: 158px; height: 176px; border: 3px solid #5a4126; border-radius: 8px; background: rgba(8,9,13,.8); }
+#floorLabel { position: absolute; top: 194px; left: 12px; max-width: 220px; font-size: 13px; font-weight: 900; background: rgba(15,17,24,.85); padding: 5px 9px; border-radius: 8px; line-height: 1.35; }
+#floorLabel:empty { display: none; }
+#topbar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; }
+#timer { font-family: var(--display); font-size: 30px; background: rgba(15,17,24,.85); padding: 4px 14px; border-radius: 10px; border: 2px solid #3a3c4c; min-width: 110px; text-align: center; }
+#timer.low { color: var(--danger); border-color: var(--danger); }
+#roundInfo { font-size: 14px; font-weight: 900; background: rgba(15,17,24,.85); padding: 6px 10px; border-radius: 8px; }
+#roleBadge { font-family: var(--display); font-size: 15px; padding: 7px 12px; border-radius: 8px; color: var(--ink); }
+#roleBadge.hider { background: var(--good); }
+#roleBadge.seeker { background: var(--danger); color: #fff; }
+#pauseBtn { position: absolute; top: 12px; right: 12px; width: 48px; height: 48px; border-radius: 10px; border: 2px solid #3a3c4c; background: rgba(15,17,24,.85); color: var(--chalk); font-size: 18px; font-weight: 900; }
+#scoreBtn { position: absolute; top: 12px; right: 68px; height: 48px; border-radius: 10px; border: 2px solid #3a3c4c; background: rgba(15,17,24,.85); color: var(--chalk); padding: 0 12px; font-weight: 900; }
+
+/* the sentence: word tags hanging off the bottom of the screen – the memorable thing */
+#goal { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); text-align: center; width: min(96vw, 900px); }
+#goal .goal-title { font-weight: 900; font-size: 15px; color: var(--chalk); text-shadow: 0 2px 4px #000; margin-bottom: 8px; }
+#goal .goal-title.done { color: var(--good); font-size: 18px; }
+.chips { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; min-width: 64px; padding: 10px 14px 9px; border-radius: 8px 8px 10px 10px; background: #f3eee2; color: #3a3326; font-weight: 900; font-size: 22px; line-height: 1; box-shadow: 0 4px 0 #a39a85, 0 8px 18px rgba(0,0,0,.45); border-top: 7px solid var(--c, #a39a85); opacity: .55; transform: rotate(var(--r, 0deg)); }
+.chip small { display: block; font-size: 11px; font-weight: 900; color: var(--c); margin-top: 4px; filter: brightness(.75); }
+.chip.got { opacity: 1; background: #fffdf6; }
+.chip.got::after { content: "✓"; position: absolute; top: -14px; right: -8px; width: 24px; height: 24px; border-radius: 50%; background: var(--good); color: #0b2a14; font-size: 15px; display: grid; place-items: center; box-shadow: 0 2px 0 #1f7a3c; }
+.chip.pop { animation: pop .5s ease-out; }
+@keyframes pop { 0% { transform: scale(1.5) rotate(var(--r)); } 100% { transform: scale(1) rotate(var(--r)); } }
+.seek-goal { display: inline-flex; gap: 14px; align-items: center; background: rgba(15,17,24,.88); border: 2px solid var(--danger); border-radius: 12px; padding: 10px 16px; font-weight: 900; font-size: 16px; }
+.seek-goal b { color: var(--amber); }
+
+#status { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 17px; background: rgba(15,17,24,.9); border-radius: 10px; padding: 8px 14px; text-align: center; max-width: 92vw; }
+#status:empty { display: none; }
+#prompt { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); background: rgba(15,17,24,.92); border: 2px solid var(--amber); border-radius: 10px; padding: 8px 14px; font-weight: 900; font-size: 17px; white-space: nowrap; }
+#prompt kbd { font-family: var(--display); background: var(--amber); color: var(--ink); border-radius: 6px; padding: 2px 8px; margin-right: 8px; font-size: 15px; }
+#toasts { position: absolute; top: 120px; right: 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; max-width: min(34vw, 420px); }
+.toast { background: rgba(15,17,24,.92); border-left: 5px solid var(--amber); padding: 8px 12px; border-radius: 6px; font-weight: 800; font-size: 15px; animation: toastIn .25s ease-out; }
+.toast.bad { border-left-color: var(--danger); } .toast.good { border-left-color: var(--good); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(20px); } }
+#bigMsg { position: absolute; top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+#bigMsg h2 { font-family: var(--display); font-weight: 400; font-size: clamp(40px, 9vw, 86px); margin: 0; color: var(--amber); text-shadow: 0 5px 0 #6b4a24, 0 10px 30px #000; animation: stamp .35s ease-out; }
+#bigMsg p { font-size: 20px; font-weight: 900; margin: 8px 0 0; text-shadow: 0 2px 6px #000; }
+@keyframes stamp { from { transform: scale(1.8) rotate(-4deg); opacity: 0; } }
+#stamina { position: absolute; left: 50%; bottom: 112px; width: 160px; height: 6px; margin-left: -80px; background: rgba(0,0,0,.5); border-radius: 3px; overflow: hidden; transition: opacity .4s; }
+#stamina div { height: 100%; width: 100%; background: var(--amber); }
+#hideBar { position: absolute; left: 50%; top: 116px; width: 220px; margin-left: -110px; height: 10px; background: rgba(0,0,0,.6); border-radius: 5px; overflow: hidden; border: 1px solid #555; }
+#hideBar div { height: 100%; background: var(--noun); width: 100%; }
+#arrows .arrow { position: absolute; width: 0; height: 0; transform-origin: center; }
+#arrows .arrow i { position: absolute; left: -14px; top: -20px; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 26px solid var(--c); filter: drop-shadow(0 0 6px var(--c)); }
+#arrows .arrow b { position: absolute; left: -40px; top: 10px; width: 80px; text-align: center; font-size: 12px; font-weight: 900; color: var(--c); text-shadow: 0 1px 3px #000; }
+#vignette { position: absolute; inset: 0; box-shadow: inset 0 0 160px 40px rgba(255,40,40,.0); transition: box-shadow .3s; }
+#vignette.on { box-shadow: inset 0 0 160px 50px rgba(255,40,40,.65); }
+/* "Seeker is near" warning: flashing banner + glow on the side the seeker is coming from */
+#nearWarn { position: absolute; top: 72px; left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 26px; color: #fff; background: #c81e1e; border: 3px solid #ff8a8a; border-radius: 12px; padding: 8px 18px; white-space: nowrap; box-shadow: 0 0 30px rgba(255,40,40,.7); animation: nearFlash .7s steps(2, jump-none) infinite; }
+#nearWarn.close { font-size: 30px; animation-duration: .35s; }
+@keyframes nearFlash { 0% { opacity: 1; } 100% { opacity: .25; } }
+.edge { position: absolute; opacity: 0; pointer-events: none; transition: opacity .15s; }
+#edgeL { left: 0; top: 0; bottom: 0; width: 22vw; background: linear-gradient(90deg, rgba(255,25,25,.75), transparent); }
+#edgeR { right: 0; top: 0; bottom: 0; width: 22vw; background: linear-gradient(270deg, rgba(255,25,25,.75), transparent); }
+#edgeT { left: 0; right: 0; top: 0; height: 22vh; background: linear-gradient(180deg, rgba(255,25,25,.75), transparent); }
+#edgeB { left: 0; right: 0; bottom: 0; height: 22vh; background: linear-gradient(0deg, rgba(255,25,25,.75), transparent); }
+@media (prefers-reduced-motion: reduce) { #nearWarn { animation: none !important; } }
+/* room alarm */
+#alarm { position: absolute; top: 120px; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 19px; color: #fff; background: rgba(15,17,24,.94); border: 3px solid var(--rc, #ff4040); border-radius: 12px; padding: 7px 16px; white-space: nowrap; animation: nearFlash .5s steps(2, jump-none) infinite; }
+#alarm b { color: var(--rc, #ff4040); }
+/* points + items */
+#wallet { position: absolute; top: 68px; right: 12px; background: rgba(15,17,24,.88); border: 2px solid #ffd166; border-radius: 10px; padding: 6px 12px; font-weight: 900; font-size: 15px; text-align: right; line-height: 1.5; }
+#wPts { font-family: var(--display); font-size: 22px; color: #ffd166; }
+#wItems span { display: block; font-size: 13px; color: #9ff3ff; }
+#wItems span.oil { color: #e8c35a; }
+#crosshair { position: absolute; left: 50%; top: 42%; width: 34px; height: 34px; margin: -17px 0 0 -17px; border: 2px solid #9ff3ff; border-radius: 50%; box-shadow: 0 0 10px #9ff3ff; pointer-events: none; }
+#crosshair::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: #9ff3ff; border-radius: 50%; }
+#stunMsg { position: absolute; top: 46%; left: 50%; transform: translate(-50%, -50%); font-family: var(--display); font-size: clamp(30px, 6vw, 56px); color: #9ff3ff; text-shadow: 0 4px 0 #134; text-align: center; pointer-events: none; }
+/* vending menu */
+.shop-items { display: grid; gap: 10px; margin: 12px 0; }
+.shop-items button { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 12px; text-align: left; background: #0f1118; color: var(--chalk); border: 2px solid #3a3c4c; border-radius: 12px; padding: 12px 14px; font-size: 16px; font-weight: 800; }
+.shop-items button:not(:disabled):hover { border-color: var(--amber); }
+.shop-items button:disabled { opacity: .45; cursor: not-allowed; }
+.shop-items kbd { font-family: var(--display); background: var(--amber); color: var(--ink); border-radius: 6px; text-align: center; padding: 2px 0; }
+.shop-items small { display: block; color: var(--muted); font-weight: 700; font-size: 13px; }
+.shop-items .price { font-family: var(--display); color: #ffd166; font-size: 20px; }
+#keysHint { position: absolute; left: 12px; bottom: 12px; font-size: 12px; color: var(--muted); background: rgba(15,17,24,.7); padding: 6px 10px; border-radius: 8px; max-width: 300px; line-height: 1.5; }
+#keysHint kbd { font-family: var(--body); font-weight: 900; color: var(--chalk); background: #2a2d3c; border-radius: 4px; padding: 0 5px; }
+
+#blackout { position: fixed; inset: 0; background: #000; display: grid; place-items: center; text-align: center; z-index: 5; }
+#blackout h2 { font-family: var(--display); font-weight: 400; color: var(--danger); font-size: clamp(28px, 6vw, 54px); margin: 0 0 8px; }
+#blackout p { color: var(--muted); font-size: 18px; margin: 0; }
+#countNum { display: block; font-family: var(--display); font-size: 120px; color: var(--chalk); line-height: 1.1; }
+#headBanner { position: fixed; top: 116px; left: 50%; transform: translateX(-50%); background: var(--danger); color: #fff; font-weight: 900; font-size: 18px; padding: 8px 16px; border-radius: 10px; z-index: 4; pointer-events: none; }
+
+/* overlays */
+#overlay { position: fixed; inset: 0; background: rgba(5,6,10,.72); display: grid; place-items: center; z-index: 10; padding: 16px; overflow-y: auto; }
+#overlayBox { width: min(720px, 100%); padding: 22px; max-height: calc(100vh - 32px); overflow-y: auto; }
+#overlayBox h2 { font-family: var(--display); font-weight: 400; font-size: clamp(26px, 5vw, 40px); margin: 0 0 4px; color: var(--amber); }
+#overlayBox .sub { color: var(--muted); margin: 0 0 14px; font-size: 16px; }
+.results { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 16px; }
+.res { background: #0f1118; border-radius: 10px; padding: 10px 12px; }
+.res .who { font-weight: 900; }
+.res .sent { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 5px; }
+.res .sent span { padding: 3px 8px; border-radius: 6px; background: #2a2d3c; color: var(--muted); font-weight: 800; }
+.res .sent span.got { background: var(--c); color: var(--ink); }
+table.scores { width: 100%; border-collapse: collapse; font-size: 16px; }
+table.scores td { padding: 7px 8px; border-bottom: 1px solid #2c2a24; }
+table.scores td:last-child { text-align: right; font-family: var(--display); color: var(--amber); }
+table.scores tr.me td { color: var(--chalk); font-weight: 900; background: rgba(255,201,74,.07); }
+.ov-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.podium { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin: 18px 0; }
+.podium div { text-align: center; width: 120px; }
+.podium .block { background: var(--wood); border-radius: 8px 8px 0 0; display: grid; place-items: center; font-family: var(--display); font-size: 30px; color: var(--ink); box-shadow: inset 0 -6px 0 rgba(0,0,0,.25); }
+.podium .nm { font-weight: 900; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #2c2a24; }
+.opt-row input[type=range] { width: 160px; accent-color: var(--amber); }
+
+/* touch controls */
+#touch { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+#stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.25); left: 90px; top: calc(100% - 130px); }
+#knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,201,74,.75); }
+#tbtns { position: absolute; right: 14px; bottom: 120px; display: grid; grid-template-columns: 64px 64px; gap: 10px; pointer-events: auto; }
+#tbtns button { width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(255,255,255,.3); background: rgba(15,17,24,.7); color: var(--chalk); font-size: 13px; font-weight: 900; }
+#tbtns button.on { background: rgba(255,201,74,.85); color: var(--ink); }
+#tAct { grid-column: 1 / -1; justify-self: center; width: 84px !important; height: 84px !important; background: rgba(255,201,74,.85) !important; color: var(--ink) !important; font-size: 15px !important; }
+#tAct.idle { opacity: .4; }
+
+@media (max-width: 860px) {
+  .menu-wrap, .lobby-wrap { grid-template-columns: 1fr; }
+  .customiser { grid-template-columns: 140px 1fr; }
+  #preview { width: 140px; height: 220px; }
+  #keysHint { display: none; }
+}
+@media (max-width: 640px), (max-height: 500px) {
+  #minimap { width: 104px; height: 116px; top: 8px; left: 8px; }
+  #floorLabel { top: 128px; left: 8px; font-size: 11px; max-width: 150px; }
+  #timer { font-size: 22px; min-width: 80px; }
+  #roundInfo { display: none; }
+  .chip { font-size: 16px; padding: 7px 9px 6px; min-width: 44px; }
+  #goal { bottom: 8px; }
+  #prompt { bottom: 96px; font-size: 15px; }
+  #toasts { top: 70px; }
+  #status { top: 56px; font-size: 14px; }
+  #nearWarn { top: 52px; font-size: 18px; padding: 6px 12px; }
+  #alarm { top: 92px; font-size: 14px; white-space: normal; width: 90vw; text-align: center; }
+  #wallet { top: 64px; font-size: 12px; padding: 4px 8px; }
+  #nearWarn.close { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Escape Warehouse game view"></canvas>
+
+<!-- ============ MENU ============ -->
+<section id="menu" class="screen">
+  <div class="menu-wrap">
+    <header class="title">
+      <h1>Escape<br><span class="crate">Warehouse</span></h1>
+      <p>Sneak through the dark warehouse, collect the <b>words</b> you need to build your <b>sentence</b>, then run for the exit before the seeker tags you.</p>
+    </header>
+
+    <div class="panel" id="customiserHome">
+      <div class="customiser" id="customiser">
+        <div class="stage">
+          <canvas id="preview" width="200" height="290"></canvas>
+          <button id="randomLook" class="btn small">Surprise me</button>
+        </div>
+        <div id="lookOptions"></div>
+      </div>
+    </div>
+
+    <div class="panel menu-actions">
+      <label for="nameInput">Your name
+        <input id="nameInput" type="text" maxlength="16" autocomplete="off" placeholder="Type your name">
+      </label>
+      <button id="createBtn" class="btn primary">Create a new game</button>
+      <div class="or">or join a friend's game</div>
+      <div class="join-row">
+        <input id="codeInput" type="text" maxlength="4" autocomplete="off" placeholder="CODE" aria-label="Room code">
+        <button id="joinBtn" class="btn">Join</button>
+      </div>
+      <p id="menuError" class="error" role="alert"></p>
+      <details class="howto">
+        <summary>How to play</summary>
+        <ul>
+          <li><b>Hiders</b> get a sentence. Find each word in the right room and press <b>E</b> to pick it up.</li>
+          <li>When your sentence is complete, the <b>EXITS</b> turn green. There's one on each floor – reach either to escape!</li>
+          <li>Press <b>E</b> next to a low crate or sandbags to climb over them.</li>
+          <li>Earn points over time and for every word. Spend them at the <b>vending machines</b> beside the prison: buy a word (100), a taser (45) or a can of oil (45). A taser or an oil slip stops the seeker for 3 seconds.</li>
+          <li>An <b>alarm</b> tells hiders whenever the seeker walks into a word room.</li>
+          <li>The <b>Seeker</b> counts first, then hunts. Touch a hider to tag them. Watch out for the locator ping!</li>
+          <li>Hide behind crates (press <b>C</b> to crouch) or inside lockers.</li>
+          <li>3+ players: tagged hiders go to <b>Prison</b>. A free friend can open the door to rescue them.</li>
+          <li>2 players: a tag wins the round instantly, then you swap roles.</li>
+        </ul>
+        <div class="rooms-key">
+          <span style="--c: var(--art)">Article Room: a, an, the</span>
+          <span style="--c: var(--noun)">Noun Hall: naming words</span>
+          <span style="--c: var(--adj)">Adjective Gallery: describing words</span>
+          <span style="--c: var(--verb)">Verb Basement: doing words</span>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOBBY ============ -->
+<section id="lobby" class="screen hidden">
+  <div class="lobby-wrap">
+    <div class="panel lobby-left">
+      <div class="code-box">
+        <span>Room code</span>
+        <strong id="roomCode">----</strong>
+        <button id="copyLink" class="btn small ghost">Copy invite link</button>
+      </div>
+      <h3>Players <small id="playerCount"></small></h3>
+      <ul id="playerList"></ul>
+      <p id="lobbyNote" class="note"></p>
+      <div class="lobby-buttons">
+        <button id="startBtn" class="btn primary">Start game</button>
+        <button id="leaveLobby" class="btn ghost">Leave room</button>
+      </div>
+    </div>
+    <div class="panel lobby-right">
+      <h3 style="margin-top:0">Your character</h3>
+      <div id="customiserLobby"></div>
+      <h3>Game options <small id="hostOnly"></small></h3>
+      <div class="presets" id="presets">
+        <button class="btn small ghost" data-preset="easy">Easier (Year 3)</button>
+        <button class="btn small ghost" data-preset="normal">Standard</button>
+        <button class="btn small ghost" data-preset="hard">Challenge (Year 4)</button>
+      </div>
+      <div id="settingsForm" class="settings-grid"></div>
+      <div id="levelPreview" class="levels"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <canvas id="minimap" width="158" height="176"></canvas>
+  <div id="floorLabel"></div>
+  <div id="topbar"><div id="roundInfo"></div><div id="timer">0:00</div><div id="roleBadge"></div></div>
+  <button id="scoreBtn" aria-label="Scores">Scores</button>
+  <button id="pauseBtn" aria-label="Menu">II</button>
+  <div id="status"></div>
+  <div id="hideBar" class="hidden"><div></div></div>
+  <div id="arrows"></div>
+  <div id="bigMsg"></div>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="prompt" class="hidden"></div>
+  <div id="stamina"><div></div></div>
+  <div id="goal"></div>
+  <div id="vignette"></div>
+  <div class="edge" id="edgeL"></div><div class="edge" id="edgeR"></div><div class="edge" id="edgeT"></div><div class="edge" id="edgeB"></div>
+  <div id="nearWarn" class="hidden" role="alert">SEEKER IS NEAR!</div>
+  <div id="alarm" class="hidden" role="alert"></div>
+  <div id="wallet" class="hidden"><span id="wPts">0</span> points<span id="wItems"></span></div>
+  <div id="crosshair" class="hidden"></div>
+  <div id="stunMsg" class="hidden"></div>
+  <div id="keysHint">Click the game to look around. <kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>C</kbd> crouch · <kbd>E</kbd> action / climb · <kbd>Q</kbd> taser · <kbd>G</kbd> oil · <kbd>F</kbd> torch · <kbd>Tab</kbd> scores · <kbd>Esc</kbd> menu</div>
+</div>
+<div id="blackout" class="hidden"><div><h2>You are the seeker</h2><p>Eyes closed! The hiders are running…</p><strong id="countNum">15</strong></div></div>
+<div id="headBanner" class="hidden"></div>
+
+<div id="touch" class="hidden">
+  <div id="stick"><div id="knob"></div></div>
+  <div id="tbtns">
+    <button id="tAct" class="idle">Action</button>
+    <button id="tCrouch">Crouch</button>
+    <button id="tRun">Run</button>
+    <button id="tLight">Torch</button>
+    <button id="tScores">Scores</button>
+    <button id="tTaser" class="hidden">Taser</button>
+    <button id="tOil" class="hidden">Oil</button>
+  </div>
+</div>
+
+<div id="overlay" class="hidden"><div class="panel" id="overlayBox" role="dialog" aria-modal="true"></div></div>
+
+<noscript><p style="padding:20px">Escape Warehouse needs JavaScript turned on.</p></noscript>
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
